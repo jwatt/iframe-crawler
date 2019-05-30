@@ -84,7 +84,7 @@ Postprocessing
 ==============
 
 The date-stamped .txt files in the output directory can be processed using the
-`convert-output-to-json.js` node.js script:
+`convert-output-to-json.js` node.js script to create a JSON results file:
 ```
 node convert-output-to-json.js output/crawl.txt > output/crawl.json
 ```
@@ -95,4 +95,24 @@ Displaying
 
 The file `display-crawl-results.html` is a simple HTML viewer for the
 output/crawl.json file.
+
+
+Raw output file
+===============
+
+The raw output file from a crawl contains a series of 'site' blocks that look
+like this:
+
+```
+site:<hostname>
+<page-prefix><page-url>
+  <subdoc-prefix><subdoc-url>
+```
+
+The 'site:' line denotes the start of the crawl output for a new site
+(as found in the input .csv file).
+
+A 'site:' line is followed by one or more 'page-url' lines, which are each
+followed by zero or more 'subdoc-url' lines that are indented by two spaces to
+denote that they the URLs of subdocuments embedded by the page above.
 
