@@ -236,10 +236,14 @@ async function processPage(pageURL, outputFile, recursionLevelsLeft) {
   let result;
   try {
     result = JSON.parse(await browser.execute(gatherPageInfo, /*getLinks*/ recursionLevelsLeft > 0, crawlerConfig.maxSubPages));
-  } catch(e) {
-    if (await handleException(e, pageURL, outputFile, recursionLevelsLeft) == "skip") {
-      return;
+    if (result === null) {
+      // XXX Some sort of webdriverio/geckodriver bug where the JSON isn't
+      // transferred correctly?!?  But specifically happening on academia.edu.
+      throw new Error("null JSON");
     }
+  } catch(e) {
+    await handleException(e, pageURL, outputFile, recursionLevelsLeft);
+    return;
   }
 
   await fsPromises.writeFile(outputFile, result.href + "\n");
