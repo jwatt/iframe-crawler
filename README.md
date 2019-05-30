@@ -52,11 +52,25 @@ head -1000 cisco-top-1m.csv > cisco-top-1k.csv
 Running
 =======
 
-# Run geckodriver in one Terminal tab (it acts as an intermediary between webdriverio and Firefox):
+# Run geckodriver in one Terminal tab (geckodriver acts as an intermediary
+# between webdriverio and Firefox):
 ./geckodriver --port 4444
 
 # Run the crawler in another tab:
 node crawl-for-iframes.js alexa-top-1k.csv
 
 
+Postprocessing
+==============
+
+# The dated .txt files in the output directory can be processed using the
+# `convert-output-to-json.js` node.js script:
+node convert-output-to-json.js output/crawl.txt > output/crawl.json
+
+
+Displaying
+==========
+
+The file `display-crawl-results.html` is a simple HTML viewer for the
+output/crawl.json file.
 
