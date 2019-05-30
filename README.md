@@ -48,6 +48,10 @@ curl -L https://s3-us-west-1.amazonaws.com/umbrella-static/top-1m.csv.zip | funz
 head -1000 alexa-top-1m.csv > alexa-top-1k.csv
 head -1000 cisco-top-1m.csv > cisco-top-1k.csv
 
+# Optionally, get and use a specific version of firefox:
+curl -L https://ftp.mozilla.org/pub/firefox/nightly/latest-mozilla-central/firefox-69.0a1.en-US.linux-x86_64.tar.bz2 | tar jx
+export IFRAME_CRAWLER_FIREFOX_BIN="$PWD/firefox/firefox"
+
 
 Running
 =======

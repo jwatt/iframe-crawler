@@ -16,7 +16,21 @@ const browserConfig = Object.freeze({
   capabilities: {
     browserName: 'firefox',
     'moz:firefoxOptions': {
-      args: ['-headless'],  // Comment out this line to see the browser!
+      // Available options:
+      // https://firefox-source-docs.mozilla.org/testing/geckodriver/Capabilities.html
+      binary: require('process').env.IFRAME_CRAWLER_FIREFOX_BIN,
+      args: [
+        "-headless",  // Comment out this line to see the browser!
+        //"-profile", "/path/to/profile",
+      ],
+      prefs: {
+        "fission.autostart": true,
+        "fission.frontend.simulate-events": true,
+        "fission.frontend.simulate-messages": true,
+        "fission.rebuild_frameloaders_on_remoteness_change": true,
+        "fission.preserve_browsing_contexts": true,
+        "fission.oopif.attribute": true,
+      }
     },
   }
 });
