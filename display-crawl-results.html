@@ -52,16 +52,20 @@ function generateHTML(jsonStr) {
     "Total pages crawled: " + totalPages + "; " +
     "Pages with subdocs: " + totalPagesWithSubdocs + "; " +
     "Pages with visible, cross-origin subdocs: " + totalPagesWithVisibleSubdocs;
-  document.body.append(p);
+
+  let resultsElem = document.getElementById("results");
+
+  resultsElem.textContent = "";
+  resultsElem.append(p);
 
   for (let site of sites) {
-    generateAndAppendSiteToPage(site);
+    generateAndAppendSiteToPage(site, resultsElem);
   }
 }
 
-function generateAndAppendSiteToPage(site) {
+function generateAndAppendSiteToPage(site, resultsElem) {
   let h = document.createElement("h4");
-  h.textContent = site.hostname + " - " + site.pages.length + " pages crawled";
+  h.textContent = site.hostname + " - " + site.pages.length + " pages crawled. Pages embedding cross-origin, visible subdocs:";
   let stats = [];
   if (site.skipCounts.crashed > 0) {
     stats.push(site.skipCounts.crashed + " crashed");
@@ -76,7 +80,7 @@ function generateAndAppendSiteToPage(site) {
     h.textContent += " (" + stats.join("; ") + ")";
   }
 
-  document.body.append(h);
+  resultsElem.append(h);
   let pagesWithCrossOriginSubdocs = [];
   for (let page of site.pages) {
     if (page.subdocs.visibleCrossOrigin.length > 0) {
@@ -101,7 +105,7 @@ function generateAndAppendSiteToPage(site) {
 	l2.append(li);
       }
     }
-    document.body.append(l);
+    resultsElem.append(l);
   }
 }
 
@@ -110,10 +114,11 @@ addEventListener("load", displayCrawlData);
     </script>
   </head>
   <body>
-    <h1>Sites with visible cross-origin subdocuments</h1>
+    <h1>Crawl results</h1>
+    <p>For background, see the <a href="README.md">README</a>. For the raw crawl output see the <a href="output">output directory</a>.</p>
     <p>"Visible" here means that, for the embedding element, the computed value of the CSS 'display' property was a value other than 'none', and getBoundingClientRect() had non-zero width and height.</p>
-    <p>The following only lists the pages that have visible cross-origin iframes. The sublist for each page is the URLs of the cross-origin documents that are being embedded.</p>
-
+    <p>Some pages below may not appear to belong to the site that they are grouped under. We end up with these pages when the page that we loaded redirected to an external site. For example, when the youtube.com homepage redirects to accounts.google.com/signin.</p>
+    <section id="results">Processing crawl results...</section>
   </body>
 </html>
 
