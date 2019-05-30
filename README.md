@@ -28,48 +28,66 @@ error being encountered.
 Setup on Ubuntu 19.04
 =====================
 
-# Install up-to-date node.js and npm (Ubuntu installs the LTS version by default).
-# Using instructions from:
-# https://github.com/nodesource/distributions/blob/master/README.md#installation-instructions
+Install an up-to-date node.js and npm (Ubuntu installs the LTS version by
+default). [NodeSource has instructions](https://github.com/nodesource/distributions/blob/master/README.md#installation-instructions),
+but in summary:
+```
 curl -sL https://deb.nodesource.com/setup_12.x | sudo -E bash -
 sudo apt-get install -y nodejs
+```
 
-# Install webdriverio:
+Install webdriverio:
+```
 npm install webdriverio
+```
 
-# Get geckodriver:
+Get geckodriver:
+```
 curl -L https://github.com/mozilla/geckodriver/releases/download/v0.24.0/geckodriver-v0.24.0-linux64.tar.gz | tar xz
+```
 
-# Optionally, update the Alexa and/or Cisco top one million lists:
+Optionally, update the Alexa and/or Cisco top one million lists:
+```
 curl -L https://s3.amazonaws.com/alexa-static/top-1m.csv.zip | funzip > alexa-top-1m.csv
 curl -L https://s3-us-west-1.amazonaws.com/umbrella-static/top-1m.csv.zip | funzip > cisco-top-1m.csv
+```
 
-# Optionally, create a reduced list:
+Optionally, create reduced list:
+```
 head -1000 alexa-top-1m.csv > alexa-top-1k.csv
 head -1000 cisco-top-1m.csv > cisco-top-1k.csv
+```
 
-# Optionally, get and use a specific version of firefox:
+Optionally, get and use a specific version of firefox:
+```
 curl -L https://ftp.mozilla.org/pub/firefox/nightly/latest-mozilla-central/firefox-69.0a1.en-US.linux-x86_64.tar.bz2 | tar jx
 export IFRAME_CRAWLER_FIREFOX_BIN="$PWD/firefox/firefox"
+```
 
 
 Running
 =======
 
-# Run geckodriver in one Terminal tab (geckodriver acts as an intermediary
-# between webdriverio and Firefox):
+Run geckodriver in one Terminal tab (geckodriver acts as an intermediary
+between webdriverio and Firefox):
+```
 ./geckodriver --port 4444
+```
 
-# Run the crawler in another tab:
+Run the crawler in another tab:
+```
 node crawl-for-iframes.js alexa-top-1k.csv
+```
 
 
 Postprocessing
 ==============
 
-# The dated .txt files in the output directory can be processed using the
-# `convert-output-to-json.js` node.js script:
+The date-stamped .txt files in the output directory can be processed using the
+`convert-output-to-json.js` node.js script:
+```
 node convert-output-to-json.js output/crawl.txt > output/crawl.json
+```
 
 
 Displaying
