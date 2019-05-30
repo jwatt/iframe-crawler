@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title></title>
+    <script>
+
+"use strict";
+
+let jsonFilePath = "output/crawl.json";
+
+function getCrawlJSON(file, callback) {
+  var xhr = new XMLHttpRequest();
+  xhr.overrideMimeType("application/json");
+  xhr.open("GET", file, true);
+  xhr.onreadystatechange = function() {
+    if (xhr.readyState === 4 && xhr.status == "200") {
+      callback(xhr.responseText);
+    }
+  }
+  xhr.send(null);
+}
+
+function displayCrawlData() {
+  getCrawlJSON(jsonFilePath, generateHTML);
+}
+
+let sites = [];
+
+function generateHTML(jsonStr) {
+  sites = JSON.parse(jsonStr).sites;
+
+  let totalPages = 0;
+  let totalPagesWithSubdocs = 0;
+  let totalPagesWithVisibleSubdocs = 0;
+  for (let site of sites) {
+    for (let page of site.pages) {
+      totalPages++;
+      if (page.subdocs.visibleCrossOrigin.length > 0) {
+        totalPagesWithVisibleSubdocs++;
+      }
+      if (page.subdocs.visibleCrossOrigin.length > 0 ||
+          page.subdocs.visibleSameOrigin.length > 0 ||
+          page.subdocs.hiddenBySize.length > 0 ||
+          page.subdocs.hiddenByDisplay.length > 0) {
+	totalPagesWithSubdocs++;
+      }
+    }
+  }
+  
+  let p = document.createElement("p");
+  p.textContent = "Total sites crawled: " + sites.length + "; " +
+    "Total pages crawled: " + totalPages + "; " +
+    "Pages with subdocs: " + totalPagesWithSubdocs + "; " +
+    "Pages with visible, cross-origin subdocs: " + totalPagesWithVisibleSubdocs;
+  document.body.append(p);
+
+  for (let site of sites) {
+    generateAndAppendSiteToPage(site);
+  }
+}
+
+function generateAndAppendSiteToPage(site) {
+  let h = document.createElement("h4");
+  h.textContent = site.hostname + " - " + site.pages.length + " pages crawled";
+  let stats = [];
+  if (site.skipCounts.crashed > 0) {
+    stats.push(site.skipCounts.crashed + " crashed");
+  }
+  if (site.skipCounts.timeout > 0) {
+    stats.push(site.skipCounts.timeout + " timed out");
+  }
+  if (site.skipCounts.error > 0) {
+    stats.push(site.skipCounts.error + " had unknown errors");
+  }
+  if (stats.length > 0) {
+    h.textContent += " (" + stats.join("; ") + ")";
+  }
+
+  document.body.append(h);
+  let pagesWithCrossOriginSubdocs = [];
+  for (let page of site.pages) {
+    if (page.subdocs.visibleCrossOrigin.length > 0) {
+      pagesWithCrossOriginSubdocs.push(page);
+    }
+  }
+  if (pagesWithCrossOriginSubdocs.length > 0) {
+    let l = document.createElement("ul");
+    for (let page of pagesWithCrossOriginSubdocs) {
+      let url = page.url;
+      let li = document.createElement("li");
+      l.append(li);
+      let a = document.createElement("a");
+      a.href = url;
+      a.textContent = url.replace(/\?.*/, "?...").replace(/#.*/, "");
+      li.append(a);
+      let l2 = document.createElement("ul");
+      li.append(l2);
+      for (let url of page.subdocs.visibleCrossOrigin) {
+        let li = document.createElement("li");
+	li.textContent = url.replace(/\?.*/, "?...").replace(/#.*/, "");
+	l2.append(li);
+      }
+    }
+    document.body.append(l);
+  }
+}
+
+addEventListener("load", displayCrawlData);
+
+    </script>
+  </head>
+  <body>
+    <h1>Sites with visible cross-origin subdocuments</h1>
+    <p>"Visible" here means that, for the embedding element, the computed value of the CSS 'display' property was a value other than 'none', and getBoundingClientRect() had non-zero width and height.</p>
+
+  </body>
+</html>
+
