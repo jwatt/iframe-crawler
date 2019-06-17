@@ -25,11 +25,11 @@ const browserConfig = Object.freeze({
       ],
       prefs: {
         "fission.autostart": true,
-        "fission.frontend.simulate-events": true,
-        "fission.frontend.simulate-messages": true,
-        "fission.rebuild_frameloaders_on_remoteness_change": true,
-        "fission.preserve_browsing_contexts": true,
-        "fission.oopif.attribute": true,
+        //"fission.frontend.simulate-events": true,
+        //"fission.frontend.simulate-messages": true,
+        //"fission.rebuild_frameloaders_on_remoteness_change": true,
+        //"fission.preserve_browsing_contexts": true,
+        //"fission.oopif.attribute": true,
       }
     },
   }
@@ -76,21 +76,57 @@ function gatherPageInfo(getLinks, maxLinkCount) {
     return url;
   }
 
-  function getURLForEmbeddingElement(elem) {
+
+
+  function getDataForEmbeddingElement(elem) {
     let url = toURL(elem.localName == "object" ? elem.data : elem.src);
     if (!url) {
       return "";
     }
-    let prefix = "";
+
+    let properties = [];
+
     if (getComputedStyle(elem).display == "none") {
-      prefix = "hidden-by-display:";
-    } else {
-      let bounds = elem.getBoundingClientRect();
-      if (bounds.width <= 1 || bounds.height <= 1) {
-        prefix = "hidden-by-size:";
+      properties.push("hidden-by-display");
+    }
+
+    let bounds = elem.getBoundingClientRect();
+    properties.push("bounds(" + bounds.x + "," + bounds.y + "," +
+                                bounds.width + "," + bounds.height + ")");
+
+    if (elem.getTransformToViewport) {
+      let m = elem.getTransformToViewport();
+      if (!m.isIdentity) {
+        properties.push(m.toString().replace(/ /g, ""));
       }
     }
-    return prefix + url.href;
+
+    let hasFilter = false, hasClipPath = false, hasMask = false;
+    let e = elem;
+    do {
+      let cs = getComputedStyle(e);
+      if (cs.filter != "none") {
+        hasFilter = true;
+      }
+      if (cs.mask != "none") {
+        hasMask = true;
+      }
+      if (cs.clipPath != "none") {
+        hasClipPath = true;
+      }
+    } while ((e = e.parentElement));
+
+    if (hasFilter) {
+      properties.push("filter");
+    }
+    if (hasMask) {
+      properties.push("mask");
+    }
+    if (hasClipPath) {
+      properties.push("clipPath");
+    }
+
+    return properties.join(";") + "|" + url.href;
   }
 
   function getURLForLink(elem) {
@@ -114,7 +150,7 @@ function gatherPageInfo(getLinks, maxLinkCount) {
     // at the content.
     return JSON.stringify({
       href: "skipping-timeout:" + docURL,
-      frames: [],
+      framesData: [],
       links: [],
     });
   }
@@ -122,9 +158,9 @@ function gatherPageInfo(getLinks, maxLinkCount) {
   const loadStatusPrefix =
     (document.readyState == "complete") ? "" : "incomplete:";
 
-  let frameURLs =
+  let framesData =
     deduplicate([...document.querySelectorAll("iframe, embed, object")]
-                    .map(getURLForEmbeddingElement)
+                    .map(getDataForEmbeddingElement)
                     .filter(url => !!url));
 
   let links = [];
@@ -145,7 +181,7 @@ function gatherPageInfo(getLinks, maxLinkCount) {
   
   return JSON.stringify({
     href: loadStatusPrefix + document.location.href,
-    frames: frameURLs,
+    framesData: framesData,
     links: links,
   });
 }
@@ -240,6 +276,7 @@ async function processPage(pageURL, outputFile, recursionLevelsLeft) {
   }
 
   try {
+    console.log(`Loading page: ${pageURL}`);
     await browser.navigateTo(pageURL);
   } catch(e) {
     if (await handleException(e, pageURL, outputFile, recursionLevelsLeft) == "skip") {
@@ -262,9 +299,9 @@ async function processPage(pageURL, outputFile, recursionLevelsLeft) {
 
   await fsPromises.writeFile(outputFile, result.href + "\n");
 
-  if (result.frames.length > 0) {
-    for (let frameURL of result.frames) {
-      await fsPromises.writeFile(outputFile, "  " + frameURL + "\n");
+  if (result.framesData.length > 0) {
+    for (let frameData of result.framesData) {
+      await fsPromises.writeFile(outputFile, "  " + frameData + "\n");
     }
   }
 
@@ -289,7 +326,7 @@ async function main() {
 
   for await (let line of sitesCSVFile) {
     let site = line.substr(line.indexOf(',') + 1);
-    let siteURL = "http://" + site + "/";
+    let siteURL = "http://" + site;
 
     // Some pages redirect to other websites.  By having this separate "site:"
     // line in the output it makes in easy to tell when the output of the

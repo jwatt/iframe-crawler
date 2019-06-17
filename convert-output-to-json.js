@@ -29,26 +29,30 @@ function isSameOrigin(url1, url2) {
   }
 }
 
+const boundsRE = /bounds\(([^,]+),([^,]+),([^,]+),([^,]+)\)/;
+
 async function main() {
   let sites = [];
   let currentSite = { hostname: "" };
   let currentPage;
 
   for await (let line of inputFile) {
-    let prefix = line.substring(0, line.indexOf(":"));
+    // Check for start of new site:
+    if (line.startsWith("site:")) {
+      let host = line.substr(5);
+      currentSite = {
+	hostname: host,
+	url: "http://" + host + "/",
+	pages: [],
+	skipCounts: { timeout: 0, crashed: 0, error: 0 },
+      };
+      sites.push(currentSite);
+      continue;
+    }
 
+    // Check for page load:
     if (line[0] != " ") {
-      if (prefix == "site") {
-	let host = line.substr(5);
-	currentSite = {
-	  hostname: host,
-	  url: "http://" + host + "/",
-	  pages: [],
-	  skipCounts: { timeout: 0, crashed: 0, error: 0 },
-	};
-	sites.push(currentSite);
-	continue;
-      }
+      let prefix = line.substring(0, line.indexOf(":"));
       if (prefix == "skipping-timeout" ||
 	  prefix == "skipping-crashed" ||
 	  prefix == "skipping-error" ||
@@ -60,36 +64,48 @@ async function main() {
       let url = new URL(line);
       currentPage = {
 	url: line,
-	subdocs: {
-	  visibleCrossOrigin: [],
-	  visibleSameOrigin: [],
-	  hiddenBySize: [],
-	  hiddenByDisplay: [],
-	},
+	subdocs: [],
       };
       if (prefix) {
-	let skipError = prefix.substr(prefix.indexOf("-") + 1);
+	let skipError = prefix.substr(prefix.indexOf("-") + 1); // handles 'incomplete' too :p
 	currentSite.skipCounts[skipError] += 1;
 	currentPage[skipError] = true;
       }
       currentSite.pages.push(currentPage);
-    } else {
-      // subdoc URLs
-      if (prefix == "  hidden-by-display") {
-	currentPage.subdocs.hiddenByDisplay.push(line.substr(line.indexOf(":") + 1));
-      } else if (prefix == "  hidden-by-size") {
-	currentPage.subdocs.hiddenBySize.push(line.substr(line.indexOf(":") + 1));
-      } else {
-	line = line.substr(2);
-	if (line == "about:blank" ||
-	    line.startsWith("javascript:") ||
-	    isSameOrigin(currentPage.url, line)) {
-	  currentPage.subdocs.visibleSameOrigin.push(line);
-	} else {
-	  currentPage.subdocs.visibleCrossOrigin.push(line);
-	}
-      }
+      continue;
     }
+
+    // Otherwise, this is data for a subdoc embedded in the last page
+
+    let subdocData = {
+      url: line.substring(line.indexOf("|") + 1),
+    };
+    subdocData.sameOrigin =
+        subdocData.url == "about:blank" ||
+	subdocData.url.startsWith("javascript:") ||
+	isSameOrigin(currentPage.url, subdocData.url);
+
+    let props = line.substring(0, line.indexOf("|")).trimLeft().split(";");
+    for (let prop of props) {
+      let bounds = boundsRE.exec(prop);
+      if (bounds) {
+        bounds.shift();
+	let [x, y, w, h] = bounds;
+	subdocData.bounds = { x:x, y:y, w:w, h:h };
+	continue;
+      }
+      if (prop.startsWith("matrix(")) {
+        subdocData.transform = prop;
+	continue;
+      }
+      if (prop == "hidden-by-display") {
+	subdocData.isDisplayNone = true;
+	continue;
+      }
+      subdocData[prop] = true;
+    }
+
+    currentPage.subdocs.push(subdocData);
   }
 
   const json = JSON.stringify({sites: sites}, null, 2);
