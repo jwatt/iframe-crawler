@@ -24,9 +24,9 @@ function loadCrawlData(callback) {
   xhr.send(null);
 }
 
-function subdocHasVisibleBounds(docData, requiredBouds) {
+function subdocBoundsOK(docData, requiredBounds) {
   let b = docData.bounds;
-  let rb = requiredBouds;
+  let rb = requiredBounds;
   return b.w >= rb.w && b.h >= rb.h;
 }
 
@@ -106,7 +106,7 @@ function generateAndAppendSiteToPage(site, filters, resultsElem) {
   resultsElem.append(h);
 
   function passesFilters(sdoc, filters) {
-    if (!subdocHasVisibleBounds(sdoc, filters.bounds) ||
+    if (!subdocBoundsOK(sdoc, filters.bounds) ||
         (filters.isOnScreen && !isOnScreen(sdoc)) ||
         (filters.notDisplayNone && sdoc.isDisplayNone) ||
         (filters.isCrossOrigin && sdoc.sameOrigin) ||
@@ -120,17 +120,26 @@ function generateAndAppendSiteToPage(site, filters, resultsElem) {
   }
 
   function addSubdocToOutput(page, sdoc, listElem) {
-    for (let sdoc of page.subdocs) {
-      let li = document.createElement("li");
-      li.textContent = sdoc.url.replace(/\?.*/, "?...").replace(/#.*/, ""); // drop query string and anchor
-      let details = "";
-      // XXX
-      if (details != "") {
-        li.append(document.createElement("br"));
-        li.append(document.createTextNode(details));
-      }
-      listElem.append(li);
+    let li = document.createElement("li");
+    li.textContent = sdoc.url.replace(/\?.*/, "?...").replace(/#.*/, ""); // drop query string and anchor
+    let details = [];
+    let b = sdoc.bounds;
+    details.push(`bounds(${Math.round(b.x)}, ${Math.round(b.y)}, ${Math.round(b.w)}, ${Math.round(b.h)})`);
+    if (sdoc.transform) {
+      details.push("transform=" + sdoc.transform);
     }
+    if (sdoc.hasFilter) {
+      details.push("has filter");
+    }
+    if (sdoc.hasMask) {
+      details.push("has mask");
+    }
+    if (sdoc.hasClipPath) {
+      details.push("has clipPath");
+    }
+    li.append(document.createElement("br"));
+    li.append(document.createTextNode("- " + details.join("; ")));
+    listElem.append(li);
   }
 
   let numPagesWithSubdocs = 0, numPagesWithSubdocsMatchingFilters = 0;
@@ -180,6 +189,7 @@ addEventListener("load", _ => {
     <h1>Some crawl results</h1>
     <p>For background on the crawler see the <a href="README.md">README</a>. For the raw crawl output see the <a href="output">output directory</a>.</p>
     <p>Some pages below may not appear to belong to the site that they are grouped under. This happens when the original page that we loaded redirected to an external site. For example, when the youtube.com homepage redirects to accounts.google.com/signin.</p>
+    <p>The bounds given in the results befow are of the form "bounds(x,y,width,height)".</p>
     <h4>Subdocument filters:</h4>
     <form id="filterform">
       Bounds width &gt;= <input id="bounds-width" value="6"> (as reported by getBoundingClientRect)<br>
