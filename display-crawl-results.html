@@ -24,20 +24,11 @@ function loadCrawlData(callback) {
   xhr.send(null);
 }
 
-function subdocBoundsOK(docData, requiredBounds) {
-  let b = docData.bounds;
-  let rb = requiredBounds;
-  return b.w >= rb.w && b.h >= rb.h;
-}
-
-function isOnScreen(docData) {
-  let b = docData.bounds;
-  return (b.x + b.w) > 0 && (b.y + b.h) > 0;
-}
-
 function displayResults() {
   let resultsElem = document.getElementById("results");
   resultsElem.textContent = "Updating results...";
+  // Return to the event loop so that the above message displays before we go
+  // on to spend a long time building the results;
   setTimeout(() => doDisplayResults(resultsElem), 0);
 }
 
@@ -76,7 +67,7 @@ function doDisplayResults(resultsElem) {
 
   for (let site of sites) {
     let [pages, pagesWithSubdocs, pagesWithSubdocsMatchingFilters] =
-        generateAndAppendSiteToPage(site, filters, resultsElem);
+        generateAndAppendSiteToResults(site, filters, resultsElem);
     totalPages += pages;
     totalPagesWithSubdocs += pagesWithSubdocs;
     totalPagesWithSubdocsMatchingFilters += pagesWithSubdocsMatchingFilters;
@@ -87,7 +78,7 @@ function doDisplayResults(resultsElem) {
   spanNumPagesWithSubdocsMatchingFilters.textContent = totalPagesWithSubdocsMatchingFilters;
 }
 
-function generateAndAppendSiteToPage(site, filters, resultsElem) {
+function generateAndAppendSiteToResults(site, filters, resultsElem) {
   let h = document.createElement("h4");
   h.textContent = site.hostname + " - " + site.pages.length + " pages crawled.";
   let stats = [];
@@ -104,6 +95,17 @@ function generateAndAppendSiteToPage(site, filters, resultsElem) {
     h.textContent += " (" + stats.join("; ") + ")";
   }
   resultsElem.append(h);
+
+  function subdocBoundsOK(docData, requiredBounds) {
+    let b = docData.bounds;
+    let rb = requiredBounds;
+    return b.w >= rb.w && b.h >= rb.h;
+  }
+
+  function isOnScreen(docData) {
+    let b = docData.bounds;
+    return (b.x + b.w) > 0 && (b.y + b.h) > 0;
+  }
 
   function passesFilters(sdoc, filters) {
     if (!subdocBoundsOK(sdoc, filters.bounds) ||

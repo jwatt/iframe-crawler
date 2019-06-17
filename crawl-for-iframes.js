@@ -77,7 +77,6 @@ function gatherPageInfo(getLinks, maxLinkCount) {
   }
 
 
-
   function getDataForEmbeddingElement(elem) {
     let url = toURL(elem.localName == "object" ? elem.data : elem.src);
     if (!url) {
