@@ -79,23 +79,6 @@ function doDisplayResults(resultsElem) {
 }
 
 function generateAndAppendSiteToResults(site, filters, resultsElem) {
-  let h = document.createElement("h4");
-  h.textContent = site.hostname + " - " + site.pages.length + " pages crawled.";
-  let stats = [];
-  if (site.skipCounts.crashed > 0) {
-    stats.push(site.skipCounts.crashed + " crashed");
-  }
-  if (site.skipCounts.timeout > 0) {
-    stats.push(site.skipCounts.timeout + " timed out");
-  }
-  if (site.skipCounts.error > 0) {
-    stats.push(site.skipCounts.error + " had unknown errors");
-  }
-  if (stats.length > 0) {
-    h.textContent += " (" + stats.join("; ") + ")";
-  }
-  resultsElem.append(h);
-
   function subdocBoundsOK(docData, requiredBounds) {
     let b = docData.bounds;
     let rb = requiredBounds;
@@ -107,11 +90,25 @@ function generateAndAppendSiteToResults(site, filters, resultsElem) {
     return (b.x + b.w) > 0 && (b.y + b.h) > 0;
   }
 
-  function passesFilters(sdoc, filters) {
+  function isSameOrigin(pageURL, subdocURL) {
+    try {
+      if (subdocURL == "about:blank" || subdocURL.startsWith("javascript:")) {
+        return true;
+      }
+      pageURL = new URL(pageURL);
+      subdocURL = new URL(subdocURL);
+      return pageURL.origin == subdocURL.origin;
+    } catch(e) {
+      // Broken URLs aren't interesting; don't add them to the cross-origin list.
+      return true;
+    }
+  }
+
+  function passesFilters(page, sdoc, filters) {
     if (!subdocBoundsOK(sdoc, filters.bounds) ||
         (filters.isOnScreen && !isOnScreen(sdoc)) ||
         (filters.notDisplayNone && sdoc.isDisplayNone) ||
-        (filters.isCrossOrigin && sdoc.sameOrigin) ||
+        (filters.isCrossOrigin && isSameOrigin(page.url, sdoc.url)) ||
         (filters.isTransformed && !sdoc.transform) ||
         (filters.isFiltered && !sdoc.hasFilter) ||
         (filters.isMasked && !sdoc.hasMask) ||
@@ -144,17 +141,36 @@ function generateAndAppendSiteToResults(site, filters, resultsElem) {
     listElem.append(li);
   }
 
-  let numPagesWithSubdocs = 0, numPagesWithSubdocsMatchingFilters = 0;
+  let siteStats = {
+    crashed: 0,
+    error: 0,
+    loadNotComplete: 0,
+  };
 
+  let h = document.createElement("h4");
+  h.textContent = site.hostname + " - " + site.pages.length + " pages crawled.";
+  resultsElem.append(h);
+
+  let numPagesWithSubdocs = 0, numPagesWithSubdocsMatchingFilters = 0;
   let pagesWithMatchingSubdocs = [];
   let pagesUL = document.createElement("ul");
+
   for (let page of site.pages) {
+    if (page.crashed) {
+      siteStats.crashed += 1;
+    }
+    if (page.error) {
+      siteStats.error += 1;
+    }
+    if (page.loadNotComplete) {
+      siteStats.loadNotComplete += 1;
+    }
     if (page.subdocs.length > 0) {
       ++numPagesWithSubdocs;
     }
     let subdocsOutput = document.createElement("ul");
     for (let sdoc of page.subdocs) {
-      if (passesFilters(sdoc, filters)) {
+      if (passesFilters(page, sdoc, filters)) {
         addSubdocToOutput(page, sdoc, subdocsOutput);
       }
     }
@@ -172,6 +188,20 @@ function generateAndAppendSiteToResults(site, filters, resultsElem) {
   }
   if (pagesUL.children.length > 0) {
     resultsElem.append(pagesUL);
+  }
+
+  let statsMsgs = [];
+  if (siteStats.crashed > 0) {
+    statsMsgs.push(siteStats.crashed + " crashed");
+  }
+  if (siteStats.error > 0) {
+    statsMsgs.push(siteStats.error + " had unknown errors");
+  }
+  if (siteStats.loadNotComplete > 0) {
+    statsMsgs.push(siteStats.loadNotComplete + " did not finish loading");
+  }
+  if (statsMsgs.length > 0) {
+    h.textContent += " (" + statsMsgs.join("; ") + ")";
   }
 
   return [site.pages.length, numPagesWithSubdocs, numPagesWithSubdocsMatchingFilters];
