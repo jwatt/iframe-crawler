@@ -18,11 +18,14 @@ const inputFile = readline.createInterface({
   crlfDelay: Infinity // allow any line ending types
 });
 
-function isSameOrigin(url1, url2) {
+function isSameOrigin(pageURL, subdocURL) {
   try {
-    url1 = new URL(url1);
-    url2 = new URL(url2);
-    return url1.origin == url2.origin;
+    if (subdocURL == "about:blank" || subdocURL.startsWith("javascript:")) {
+      return true;
+    }
+    pageURL = new URL(pageURL);
+    subdocURL = new URL(subdocURL);
+    return pageURL.origin == subdocURL.origin;
   } catch(e) {
     // Broken URLs aren't interesting; don't add them to the cross-origin list.
     return true;
@@ -80,10 +83,7 @@ async function main() {
     let subdocData = {
       url: line.substring(line.indexOf("|") + 1),
     };
-    subdocData.sameOrigin =
-        subdocData.url == "about:blank" ||
-	subdocData.url.startsWith("javascript:") ||
-	isSameOrigin(currentPage.url, subdocData.url);
+    subdocData.sameOrigin = isSameOrigin(currentPage.url, subdocData.url);
 
     let props = line.substring(0, line.indexOf("|")).trimLeft().split(";");
     for (let prop of props) {
