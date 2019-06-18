@@ -17,7 +17,7 @@ function loadCrawlData(callback) {
   xhr.open("GET", "output/" + document.querySelector("#input-file").value, true);
   xhr.onreadystatechange = function() {
     if (xhr.readyState === 4 && xhr.status == "200") {
-      sites = JSON.parse(xhr.responseText).sites;
+      sites = JSON.parse(xhr.responseText);
       displayResults();
     }
   }

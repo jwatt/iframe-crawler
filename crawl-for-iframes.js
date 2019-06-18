@@ -76,27 +76,32 @@ function gatherPageInfo(getLinks, maxLinkCount) {
     return url;
   }
 
-
   function getDataForEmbeddingElement(elem) {
     let url = toURL(elem.localName == "object" ? elem.data : elem.src);
     if (!url) {
-      return "";
-    }
-
-    let properties = [];
-
-    if (getComputedStyle(elem).display == "none") {
-      properties.push("hidden-by-display");
+      return null;
     }
 
     let bounds = elem.getBoundingClientRect();
-    properties.push("bounds(" + bounds.x + "," + bounds.y + "," +
-                                bounds.width + "," + bounds.height + ")");
+
+    let data = {
+      url: url,
+      bounds: {
+        x: bounds.x,
+        y: bounds.y,
+        w: bounds.width,
+        h: bounds.height,
+      },
+    };
+
+    if (getComputedStyle(elem).display == "none") {
+      data.isDisplayNone = true;
+    }
 
     if (elem.getTransformToViewport) {
       let m = elem.getTransformToViewport();
       if (!m.isIdentity) {
-        properties.push(m.toString().replace(/ /g, ""));
+        data.transform = m.toString().replace(/ /g, "");
       }
     }
 
@@ -105,27 +110,17 @@ function gatherPageInfo(getLinks, maxLinkCount) {
     do {
       let cs = getComputedStyle(e);
       if (cs.filter != "none") {
-        hasFilter = true;
+        data.hasFilter = true;
       }
       if (cs.mask != "none") {
-        hasMask = true;
+        data.hasMask = true;
       }
       if (cs.clipPath != "none") {
-        hasClipPath = true;
+        data.hasClipPath = true;
       }
     } while ((e = e.parentElement));
 
-    if (hasFilter) {
-      properties.push("filter");
-    }
-    if (hasMask) {
-      properties.push("mask");
-    }
-    if (hasClipPath) {
-      properties.push("clipPath");
-    }
-
-    return properties.join(";") + "|" + url.href;
+    return data;
   }
 
   function getURLForLink(elem) {
@@ -148,19 +143,19 @@ function gatherPageInfo(getLinks, maxLinkCount) {
     // If we didn't even reach the "interactive" stage, don't even try to look
     // at the content.
     return JSON.stringify({
-      href: "skipping-timeout:" + docURL,
-      framesData: [],
+      url: docURL,
+      loadNotComplete: true,
+      subdocs: [],
       links: [],
     });
   }
 
-  const loadStatusPrefix =
-    (document.readyState == "complete") ? "" : "incomplete:";
+  const readyState = document.readyState; // stored before we call querySelectorAll
 
-  let framesData =
+  let subdocsData =
     deduplicate([...document.querySelectorAll("iframe, embed, object")]
                     .map(getDataForEmbeddingElement)
-                    .filter(url => !!url));
+                    .filter(data => data != null));
 
   let links = [];
 
@@ -178,11 +173,15 @@ function gatherPageInfo(getLinks, maxLinkCount) {
     }
   }
   
-  return JSON.stringify({
-    href: loadStatusPrefix + document.location.href,
-    framesData: framesData,
+  let result = {
+    url: document.location.href,
+    subdocs: subdocsData,
     links: links,
-  });
+  };
+  if (readyState != "complete") {
+    result.loadNotComplete = true;
+  }
+  return JSON.stringify(result);
 }
 
 
@@ -209,6 +208,13 @@ async function cleanup(code) {
 
 process.once('SIGINT', async (code) => {
   processInterupted = true;
+
+  // Try to make the output JSON valid. This may not work.
+  await fsPromises.writeFile(outputFile, `    ]
+  }
+]
+`);
+
   await cleanup(code);
 });
 
@@ -219,7 +225,7 @@ async function createOutputFile() {
   const dateTime = 
     new Date().toISOString().replace(/T/, '--').replace(/:/g, '-').replace(/\..+/, '');
 
-  return fsPromises.open(crawlerConfig.outputDirPath + "/crawl--" + dateTime + ".txt", 'w');
+  return fsPromises.open(crawlerConfig.outputDirPath + "/crawl--" + dateTime + ".json", 'w');
 }
 
 
@@ -238,12 +244,30 @@ async function recreateBrowser() {
 }
 
 
-async function handleException(e, pageURL, outputFile, recursionLevelsLeft) {
-  if (e.message.indexOf("Timeout loading page after ") != -1) {
-    // We just ignore timeouts and continue on to examine the page,
-    // even though it's still loading.  (The log output will have
-    // "incomplete:" added to the start of the output URL.)
-  } else {
+async function processPage(pageURL, outputFile, recursionLevelsLeft, isFirstPage = false) {
+  if (processInterupted) {
+    return; // got SIGINT
+  }
+
+  async function writePageJSON(result) {
+    const indent = "      ";
+    let json = JSON.stringify(result, null, 2).split("\n");
+    if (!isFirstPage) {
+      json[0] = json[0].replace("{", ",{")
+    }
+    json[0] = indent + json[0];
+    json = json.join("\n" + indent);
+    await fsPromises.writeFile(outputFile, json + "\n");
+  }
+
+  async function processException(e, pageURL, outputFile, recursionLevelsLeft) {
+    if (e.message.indexOf("Timeout loading page after ") != -1) {
+      // We just ignore timeouts and continue on to examine the page,
+      // even though it's still loading.  (The log output will have
+      // "incomplete:" added to the start of the output URL.)
+      return "loadNotComplete";
+    }
+
     // Skip this page for any other errors.
     // Browser crashed
     // "Request failed due to insecure certificate"
@@ -255,35 +279,35 @@ async function handleException(e, pageURL, outputFile, recursionLevelsLeft) {
       e.message.indexOf("Tried to run command without establishing a connection") != -1 ||
       // Content process crashed:
       e.message.indexOf("Browsing context has been discarded") != -1;
-    let logSummary = crashed ? "skipping crashed page" : "skipping page";
-    let outPrefix = crashed ? "skipping-crashed:" : "skipping-error:";
-    let recursionLevel = crawlerConfig.recursionDepth - recursionLevelsLeft;
-    console.log(`Error: ${logSummary} (level: ${recursionLevel}): ${pageURL} (${e.message})`);
-    await fsPromises.writeFile(outputFile, outPrefix + pageURL + "\n");
 
     if (crashed) {
+      let logSummary = crashed ? "skipping crashed page" : "skipping page";
+      let recursionLevel = crawlerConfig.recursionDepth - recursionLevelsLeft;
+      console.log(`Error: ${logSummary} (level: ${recursionLevel}): ${pageURL} (${e.message})`);
       await recreateBrowser();
+      return "crashed";
     }
-    return "skip";
-  }
-}
 
-
-async function processPage(pageURL, outputFile, recursionLevelsLeft) {
-  if (processInterupted) {
-    return; // got SIGINT
+    return "error";
   }
+
+  let result;
+  let loadNotComplete = false;
 
   try {
     console.log(`Loading page: ${pageURL}`);
     await browser.navigateTo(pageURL);
   } catch(e) {
-    if (await handleException(e, pageURL, outputFile, recursionLevelsLeft) == "skip") {
+    let etype = await processException(e, pageURL, outputFile, recursionLevelsLeft);
+    if (etype != "loadNotComplete") {
+      result = { url: pageURL, subdocs: [] };
+      result[etype] = true;
+      await writePageJSON(result, outputFile);
       return;
     }
+    loadNotComplete = true;
   }
 
-  let result;
   try {
     result = JSON.parse(await browser.execute(gatherPageInfo, /*getLinks*/ recursionLevelsLeft > 0, crawlerConfig.maxSubPages));
     if (result === null) {
@@ -292,20 +316,21 @@ async function processPage(pageURL, outputFile, recursionLevelsLeft) {
       throw new Error("null JSON");
     }
   } catch(e) {
-    await handleException(e, pageURL, outputFile, recursionLevelsLeft);
+    let etype = await processException(e, pageURL, outputFile, recursionLevelsLeft);
+    result = { url: pageURL, subdocs: [] };
+    result[etype] = true;
+    await writePageJSON(result, outputFile);
     return;
   }
 
-  await fsPromises.writeFile(outputFile, result.href + "\n");
+  let links = result.links;
 
-  if (result.framesData.length > 0) {
-    for (let frameData of result.framesData) {
-      await fsPromises.writeFile(outputFile, "  " + frameData + "\n");
-    }
-  }
+  delete result.links;
+
+  await writePageJSON(result, outputFile);
 
   if (recursionLevelsLeft > 0) {
-    for (let linkURL of result.links) {
+    for (let linkURL of links) {
       await processPage(linkURL, outputFile, recursionLevelsLeft - 1);
     }
   }
@@ -323,21 +348,32 @@ async function main() {
     crlfDelay: Infinity // allow any line ending types
   });
 
+  await fsPromises.writeFile(outputFile, "[\n");
+
+  let prefix = "";
+
   for await (let line of sitesCSVFile) {
-    let site = line.substr(line.indexOf(',') + 1);
-    let siteURL = "http://" + site;
+    let hostname = line.substr(line.indexOf(',') + 1);
 
-    // Some pages redirect to other websites.  By having this separate "site:"
-    // line in the output it makes in easy to tell when the output of the
-    // crawl for a new site begins and what its original hostname was.
-    await fsPromises.writeFile(outputFile, "site:" + site + "\n");
+    await fsPromises.writeFile(outputFile, `  ${prefix}{
+    "hostname": "${hostname}",
+    "pages": [
+`);
 
-    await processPage(siteURL, outputFile, crawlerConfig.recursionDepth);
+    await processPage("http://" + hostname, outputFile, crawlerConfig.recursionDepth, /* isFirstPage */ true);
+
+    await fsPromises.writeFile(outputFile, `    ]
+  }
+`);
+
+    prefix = ",";
 
     // To keep memory use from running away, close the browser and start a new
     // instance:
     await recreateBrowser();
   }
+
+  await fsPromises.writeFile(outputFile, "]\n");
 }
 
 
