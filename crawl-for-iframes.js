@@ -8,6 +8,7 @@ const crawlerConfig = Object.freeze({
   pageTimeout: 20000, // ms
   sitesListFilePath: require('process').argv[2],
   outputDirPath: "output",
+  takeScreenshots: false,
 });
 
 const browserConfig = Object.freeze({
@@ -187,6 +188,7 @@ function gatherPageInfo(getLinks, maxLinkCount) {
 
 let sitesCSVFile = null; // list of sites to crawl
 let outputFile = null; // file to output crawl results to
+let screenshotsOutputFile = null; // file to output crawl screenshots to
 let browser = null;
 let processInterupted = false; // user sent SIGINT (^C)
 
@@ -196,6 +198,9 @@ async function cleanup(code) {
     // Ensure that we close the WebDriver session otherwise we won't be able
     // to rerun this script without restarting the geckodriver process first:
     await browser.deleteSession();
+  }
+  if (screenshotsOutputFile) {
+    await screenshotsOutputFile.close();
   }
   if (outputFile) {
     await outputFile.close();
@@ -219,13 +224,14 @@ process.once('SIGINT', async (code) => {
 });
 
 
-async function createOutputFile() {
+async function createOutputFile(suffix = ".json") {
   await fsPromises.mkdir(crawlerConfig.outputDirPath, { recursive: true }); // ensure exists
 
   const dateTime = 
     new Date().toISOString().replace(/T/, '--').replace(/:/g, '-').replace(/\..+/, '');
+  const fileName = `crawl--${dateTime}${suffix}`;
 
-  return fsPromises.open(crawlerConfig.outputDirPath + "/crawl--" + dateTime + ".json", 'w');
+  return fsPromises.open(crawlerConfig.outputDirPath + "/" + fileName, 'w');
 }
 
 
@@ -241,6 +247,54 @@ async function recreateBrowser() {
   await browser.setTimeouts(crawlerConfig.scriptTimeout,
                             crawlerConfig.pageTimeout,
                             undefined);
+}
+
+
+const boundsRE = /bounds\(([^,]+),([^,]+),([^,]+),([^,]+)\)/;
+
+async function maybeTakeScreenshots(result) {
+  function isSameOrigin(pageURL, subdocURL) {
+    try {
+      if (subdocURL == "about:blank" || subdocURL.startsWith("javascript:")) {
+        return true;
+      }
+      pageURL = new URL(pageURL);
+      subdocURL = new URL(subdocURL);
+      return pageURL.origin == subdocURL.origin;
+    } catch(e) {
+      // Broken URLs aren't interesting; don't add them to the cross-origin list.
+      return true;
+    }
+  }
+
+  let firstScreenshot = true;
+  for (let i = 0; i < result.subdocs.length; ++i) {
+    let subdoc = result.subdocs[i];
+    let b = subdoc.bounds;
+    if (!subdoc.isDisplayNone
+          && !isSameOrigin(result.url, subdoc.url)
+          && b.w > 5 && b.h > 5
+          && (b.x + b.w > 0) && (b.y + b.h > 0)) { // on screen
+      await browser.execute((b) => scrollTo(b.x, b.y), b);
+      let output = firstScreenshot ? result.url + "\n" : "";
+      output += "  " + subdoc.url + "\n";
+      output += "    data:image/png;base64," + (await browser.takeScreenshot()) + "\n";
+      await fsPromises.writeFile(screenshotsOutputFile, output);
+      firstScreenshot = false;
+    }
+  }
+/*
+  if (oopSubdocIndexes.length > 0) {
+    await browser.execute(() => scrollTo(b.x, b.y));
+    let embeddingElements = await browser.findElements("css selector", "iframe, embed, object");
+    for (let i of oopSubdocIndexes) {
+      // Why in scrollIntoView not a function?!
+      await (embeddingElements[i].scrollIntoView());
+      let screenshot = "  data:image/png;base64," + (await browser.takeScreenshot()) + "\n";
+      await fsPromises.writeFile(screenshotsOutputFile, result.url + "\n" + screenshot);
+    }
+  }
+*/
 }
 
 
@@ -329,6 +383,10 @@ async function processPage(pageURL, outputFile, recursionLevelsLeft, isFirstPage
 
   await writePageJSON(result, outputFile);
 
+  if (crawlerConfig.takeScreenshots) {
+    await maybeTakeScreenshots(result);
+  }
+
   if (recursionLevelsLeft > 0) {
     for (let linkURL of links) {
       await processPage(linkURL, outputFile, recursionLevelsLeft - 1);
@@ -339,6 +397,9 @@ async function processPage(pageURL, outputFile, recursionLevelsLeft, isFirstPage
 
 async function main() {
   outputFile = await createOutputFile();
+  if (crawlerConfig.takeScreenshots) {
+    screenshotsOutputFile = await createOutputFile("-screenshots.txt");
+  }
 
   await recreateBrowser();
 
