@@ -25,6 +25,7 @@ const browserConfig = Object.freeze({
         //"-profile", "/path/to/profile",
       ],
       prefs: {
+        "dom.element.transform-getters.enabled": true,
         "fission.autostart": true,
         //"fission.frontend.simulate-events": true,
         //"fission.frontend.simulate-messages": true,
