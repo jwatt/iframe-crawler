@@ -1,0 +1,173 @@
+---
+- name: Ensure we can use ansible's 'apt' module
+  hosts: all
+  become: yes
+  tasks:
+    - name: Install ansible's apt module's remote prerequisites
+      # This is a bit ugly, since it will always have the state 'changed'.
+      # Maybe install python-apt too?
+      command: apt install -y python3-apt aptitude
+
+- name: Update and upgrade apt
+  hosts: all
+  become: yes
+  gather_facts: no
+  tasks:
+    - name: Update
+      apt:
+        update_cache: yes
+    - name: Upgrade
+      apt:
+        upgrade: yes
+
+- name: Install prerequisites
+  hosts: all
+  gather_facts: no
+  tasks:
+    - apt:
+        name: unzip # for ansible unarchive module
+        state: latest
+
+- name: Make directory to dump everything to
+  hosts: all
+  gather_facts: no
+  tasks:
+    - file:
+        path: crawler-stuff
+        state: directory
+
+- name: Add the NodeSource apt source list file
+  hosts: all
+  gather_facts: no
+  tasks:
+    - name: Download latest node.js shasum file
+      get_url:
+        url: https://nodejs.org/dist/latest/SHASUMS256.txt
+        dest: crawler-stuff/delete-me.txt
+    - name: Get version number of latest node.js
+      shell: "head -1 delete-me.txt | grep -o -E 'node-v[^.]+'"
+      args:
+        chdir: crawler-stuff
+      register: latestNodeState
+    - name: Remove node.js shasum file
+      file:
+        path: crawler-stuff/delete-me.txt
+        state: absent
+    - name: Get version of any installed node.js
+      ignore_errors: yes
+      command: node --version
+      register: currentNodeState
+    - name: Skip the rest of this play if the latest node.js is already installed
+      when: not currentNodeState.failed and "node-" + currentNodeState.stdout.split(".")[0] == latestNodeState.stdout
+      meta: end_host
+    - name: Download NodeSource install script
+      get_url:
+        url: https://deb.nodesource.com/setup_{{ node_version }}.x
+        dest: crawler-stuff/nodesource-setup-script.bash
+        mode: "a+x"
+      vars:
+        node_version: "{{ latestNodeState.stdout.replace('node-v', '') }}"
+    - name: Run NodeSource install script
+      become: yes
+      # Using recursive sudo here in addition to 'become: yes' for the -E flag.
+      shell: cat nodesource-setup-script.bash | sudo -E bash -
+      args:
+        chdir: crawler-stuff
+        executable: /bin/bash
+
+- name: Install node.js
+  hosts: all
+  become: yes
+  gather_facts: no
+  tasks:
+    - apt:
+        name: nodejs
+        state: latest
+
+- name: Install webdriver.io
+  hosts: all
+  gather_facts: no
+  tasks:
+    - npm:
+        name: webdriverio
+        global: yes
+
+- name: Get geckodriver
+  hosts: all
+  gather_facts: no
+  tasks:
+    - name: Fetch and extract geckodriver
+      # Temporary method:
+      shell: curl -L https://github.com/mozilla/geckodriver/releases/download/v0.26.0/geckodriver-v0.26.0-linux64.tar.gz | tar xz
+      args:
+        chdir: crawler-stuff
+        creates: geckodriver
+        warn: false
+      # BUG: https://github.com/ansible/ansible/issues/64612
+      #unarchive:
+      #  # TODO: Would be better to be able to fetch the version number.
+      #  src: https://github.com/mozilla/geckodriver/releases/download/v0.26.0/geckodriver-v0.26.0-linux64.tar.gz
+      #  dest: crawler-stuff
+      #  remote_src: yes
+      #  extra_opts:
+      #    - xz
+
+- name: Get the Alexa and Cisco top sites lists
+  hosts: all
+  gather_facts: no
+  tasks:
+    - name: Get the Alexa top 1M list
+      unarchive:
+        src: https://s3.amazonaws.com/alexa-static/top-1m.csv.zip
+        remote_src: yes
+        dest: crawler-stuff
+        creates: crawler-stuff/alexa-top-1m.csv # Kinda lying here
+      register: alexa1Mstate
+    - name: Rename top-1m.csv to alexa-top-1m.csv
+      command: mv top-1m.csv alexa-top-1m.csv
+      args:
+        chdir: crawler-stuff
+      when: alexa1Mstate.changed
+    - name: Create Alexa top 1k file
+      shell: head -1000 alexa-top-1m.csv > alexa-top-1k.csv
+      args:
+        chdir: crawler-stuff
+      when: alexa1Mstate.changed
+    - name: Get the Cisco top 1M list
+      unarchive:
+        src: https://s3-us-west-1.amazonaws.com/umbrella-static/top-1m.csv.zip
+        remote_src: yes
+        dest: crawler-stuff
+        creates: crawler-stuff/alexa-top-1m.csv # Kinda lying here
+      register: cisco1Mstate
+    - name: Rename top-1m.csv to cisco-top-1m.csv
+      command: mv top-1m.csv cisco-top-1m.csv
+      args:
+        chdir: crawler-stuff
+      when: cisco1Mstate.changed
+    - name: Create Cisco top 1k file
+      shell: head -1000 cisco-top-1m.csv > cisco-top-1k.csv
+      args:
+        chdir: crawler-stuff
+      when: cisco1Mstate.changed
+
+- name: Download Nightly Firefox
+  hosts: all
+  gather_facts: no
+  tasks:
+    # Temporary method:
+    - shell: curl -L https://ftp.mozilla.org/pub/firefox/nightly/latest-mozilla-central/firefox-72.0a1.en-US.linux-x86_64.tar.bz2 | tar jx
+      args:
+        chdir: crawler-stuff
+        creates: firefox
+        warn: false
+    # BUG: https://github.com/ansible/ansible/issues/64612
+    #- unarchive:
+    #    # Would be better to be able to extract the version number.
+    #    # https://bugzilla.mozilla.org/show_bug.cgi?id=1595045
+    #    src: https://ftp.mozilla.org/pub/firefox/nightly/latest-mozilla-central/firefox-72.0a1.en-US.linux-x86_64.tar.bz2
+    #    remote_src: yes
+    #    dest: crawler-stuff
+  # Then to use set:
+  # export IFRAME_CRAWLER_FIREFOX_BIN="$PWD/firefox/firefox"
+

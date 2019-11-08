@@ -25,8 +25,32 @@ output next, all indented by two spaces.  URLs may optionally be prefixed by an 
 error being encountered.
 
 
-Setup
-=====
+Security concerns
+=================
+
+The crawler will be loading a lot of pages and adverts from lots of sites around
+the world. To avoid worrying about getting malware on non-throwaway machines
+it's probably best to run the crawler in the cloud. For example, I use an
+[Ubuntu 19.10 droplet on DigitalOcean](https://www.digitalocean.com/community/tutorials/initial-server-setup-with-ubuntu-18-04).
+
+
+Ansible automated setup for Ubuntu targets
+==========================================
+
+Install Ansible on your local machine using you package manager, or else see
+the more complete 
+[Ansible installation documentation](https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html).
+
+Then on the local machine simply run:
+
+```
+# Note the trailing comma after the host is required
+ansible-playbook playbook-ubuntu-setup.yml -i user@host, -K
+```
+
+
+Manual setup
+============
 
 Install an up-to-date node.js and npm, probably using a [package manager](https://nodejs.org/en/download/package-manager/).
 
