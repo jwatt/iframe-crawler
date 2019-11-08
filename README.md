@@ -25,14 +25,15 @@ output next, all indented by two spaces.  URLs may optionally be prefixed by an 
 error being encountered.
 
 
-Setup on Ubuntu 19.04
-=====================
+Setup
+=====
 
-Install an up-to-date node.js and npm (Ubuntu installs the LTS version by
-default). [NodeSource has instructions](https://github.com/nodesource/distributions/blob/master/README.md#installation-instructions),
-but in summary:
+Install an up-to-date node.js and npm, probably using a [package manager](https://nodejs.org/en/download/package-manager/).
+
+For example, the [NodeSource instructions](https://github.com/nodesource/distributions/blob/master/README.md#installation-instructions)
+for Ubuntu:
 ```
-curl -sL https://deb.nodesource.com/setup_12.x | sudo -E bash -
+curl -sL https://deb.nodesource.com/setup_13.x | sudo -E bash -
 sudo apt-get install -y nodejs
 ```
 
@@ -43,7 +44,7 @@ npm install webdriverio
 
 Get geckodriver:
 ```
-curl -L https://github.com/mozilla/geckodriver/releases/download/v0.24.0/geckodriver-v0.24.0-linux64.tar.gz | tar xz
+curl -L https://github.com/mozilla/geckodriver/releases/download/v0.26.0/geckodriver-v0.26.0-linux64.tar.gz | tar xz
 ```
 
 Optionally, update the Alexa and/or Cisco top one million lists:
@@ -68,13 +69,13 @@ export IFRAME_CRAWLER_FIREFOX_BIN="$PWD/firefox/firefox"
 Running
 =======
 
-Run geckodriver in one Terminal tab (geckodriver acts as an intermediary
+Run geckodriver in one shell (geckodriver acts as an intermediary
 between webdriverio and Firefox):
 ```
 ./geckodriver --port 4444
 ```
 
-Run the crawler in another tab:
+Run the crawler in another shell:
 ```
 node crawl-for-iframes.js alexa-top-1k.csv
 ```
