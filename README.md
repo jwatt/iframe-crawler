@@ -59,10 +59,9 @@ head -1000 alexa-top-1m.csv > alexa-top-1k.csv
 head -1000 cisco-top-1m.csv > cisco-top-1k.csv
 ```
 
-Optionally, get and use a specific version of firefox:
+Optionally, get a specific version of firefox that you want geckodriver to use:
 ```
 curl -L https://ftp.mozilla.org/pub/firefox/nightly/latest-mozilla-central/firefox-69.0a1.en-US.linux-x86_64.tar.bz2 | tar jx
-export IFRAME_CRAWLER_FIREFOX_BIN="$PWD/firefox/firefox"
 ```
 
 
@@ -77,6 +76,8 @@ between webdriverio and Firefox):
 
 Run the crawler in another shell:
 ```
+# Optionally set IFRAME_CRAWLER_FIREFOX_BIN to a specific firefox binary:
+#export IFRAME_CRAWLER_FIREFOX_BIN="$PWD/firefox/firefox"
 node crawl-for-iframes.js alexa-top-1k.csv
 ```
 
