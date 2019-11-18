@@ -92,13 +92,13 @@ curl -L https://ftp.mozilla.org/pub/firefox/nightly/latest-mozilla-central/firef
 Running
 =======
 
-Run geckodriver in one shell (geckodriver acts as an intermediary
-between webdriverio and Firefox):
+First, run geckodriver (geckodriver acts as an intermediary between webdriverio
+and Firefox):
 ```
 ./geckodriver --port 4444
 ```
 
-Run the crawler in another shell:
+Then, in a second terminal session, run the crawler:
 ```
 # Optionally set IFRAME_CRAWLER_FIREFOX_BIN to a specific firefox binary:
 #export IFRAME_CRAWLER_FIREFOX_BIN="$PWD/firefox/firefox"
