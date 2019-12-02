@@ -52,6 +52,9 @@ ansible-playbook playbook-ubuntu-setup.yml -i user@host, -K
 Manual setup
 ============
 
+Note: These steps have not been kept up to date as well as the contents of the
+ansible playbook.
+
 Install an up-to-date node.js and npm, probably using a [package manager](https://nodejs.org/en/download/package-manager/).
 
 For example, the [NodeSource instructions](https://github.com/nodesource/distributions/blob/master/README.md#installation-instructions)
@@ -95,13 +98,17 @@ Running
 First, run geckodriver (geckodriver acts as an intermediary between webdriverio
 and Firefox):
 ```
+cd iframe-crawler
+PATH=$PWD/nodejs/bin:$PATH
 ./geckodriver --port 4444
 ```
 
 Then, in a second terminal session, run the crawler:
 ```
-# Optionally set IFRAME_CRAWLER_FIREFOX_BIN to a specific firefox binary:
-#export IFRAME_CRAWLER_FIREFOX_BIN="$PWD/firefox/firefox"
+cd iframe-crawler
+PATH=$PWD/node/bin:$PATH
+export NODE_PATH=$PWD/node/node_modules
+export IFRAME_CRAWLER_FIREFOX_BIN="$PWD/firefox/firefox"
 node crawl-for-iframes.js alexa-top-1k.csv
 ```
 

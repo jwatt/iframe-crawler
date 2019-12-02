@@ -1,118 +1,203 @@
 ---
-- name: Ensure we can use ansible's 'apt' module
+# Define variables for this playbook:
+- hosts: all
+  tasks:
+    - set_fact:
+        crawler_dir: iframe-crawler
+
+
+- name: Ensure ansible's 'apt' module can be used with this host
   hosts: all
   become: yes
   tasks:
     - name: Install ansible's apt module's remote prerequisites
-      # This is a bit ugly, since it will always have the state 'changed'.
+      # Unfornutanely, using 'command' means that these steps will always have
+      # the state 'changed' regardless of whether any changes were made.
       # Maybe install python-apt too?
-      command: apt install -y python3-apt aptitude
+      command: "{{ item }}"
+      loop:
+        # DigitalOcean's apt needs an update first to find packages (aptitude)
+        - apt update
+        - apt upgrade
+        - apt install -y python3-apt aptitude
 
-- name: Update and upgrade apt
+
+- name: Ensure unzip in installed for the 'unarchive' module
   hosts: all
   become: yes
   gather_facts: no
   tasks:
-    - name: Update
+    - name: Install unzip
       apt:
-        update_cache: yes
-    - name: Upgrade
-      apt:
-        upgrade: yes
-
-- name: Install prerequisites
-  hosts: all
-  gather_facts: no
-  tasks:
-    - apt:
-        name: unzip # for ansible unarchive module
+        name: unzip
         state: latest
 
-- name: Make directory to dump everything to
-  hosts: all
-  gather_facts: no
-  tasks:
-    - file:
-        path: crawler-stuff
-        state: directory
 
-- name: Add the NodeSource apt source list file
+- name: Ensure we have the crawler repository
   hosts: all
   gather_facts: no
   tasks:
-    - name: Download latest node.js shasum file
-      get_url:
-        url: https://nodejs.org/dist/latest/SHASUMS256.txt
-        dest: crawler-stuff/delete-me.txt
-    - name: Get version number of latest node.js
-      shell: "head -1 delete-me.txt | grep -o -E 'node-v[^.]+'"
-      args:
-        chdir: crawler-stuff
-      register: latestNodeState
-    - name: Remove node.js shasum file
-      file:
-        path: crawler-stuff/delete-me.txt
-        state: absent
-    - name: Get version of any installed node.js
+    - name: Clone/update the crawler repository
+      git:
+        repo: https://github.com/jwatt/iframe-crawler.git
+        dest: iframe-crawler
+
+
+# I've used some JavaScript language features that don't work in Node.js v10,
+# such as `for await`.  Ubuntu 19.10 Server has Node.js v10 (originally
+# released on 2018-04-24) installed, and Ubuntu 18.04 only has Node.js v8 (and
+# it's not installed by default), so we download our own more up to date Node.js
+# here.
+#
+# TODO Consiber using `vars_prompt` to ask whether we can install a newer
+# version system wide.
+# https://stackoverflow.com/questions/25466675/ansible-to-conditionally-prompt-for-a-variable
+#
+# nodejs.org docs say to use the NodeSource distribution on Debian/Ubuntu if
+# installing from a package manager:
+# https://nodejs.org/en/download/package-manager/#debian-and-ubuntu-based-linux-distributions-enterprise-linux-fedora-and-snap-packages
+#
+- name: Install a local up to date version of Node.js
+  hosts: all
+  gather_facts: no
+  tasks:
+    - name: Get version number of Node.js, if installed
       ignore_errors: yes
       command: node --version
-      register: currentNodeState
-    - name: Skip the rest of this play if the latest node.js is already installed
-      when: not currentNodeState.failed and "node-" + currentNodeState.stdout.split(".")[0] == latestNodeState.stdout
-      meta: end_host
-    - name: Download NodeSource install script
-      get_url:
-        url: https://deb.nodesource.com/setup_{{ node_version }}.x
-        dest: crawler-stuff/nodesource-setup-script.bash
-        mode: "a+x"
-      vars:
-        node_version: "{{ latestNodeState.stdout.replace('node-v', '') }}"
-    - name: Run NodeSource install script
-      become: yes
-      # Using recursive sudo here in addition to 'become: yes' for the -E flag.
-      shell: cat nodesource-setup-script.bash | sudo -E bash -
+      register: installed_nodejs_info
+      # To get the major version as an integer, we could use:
+      # int(installed_nodejs_info.stdout[1:].split(".")[0])
+
+    #- name: Skip the rest of this play if Node.js is already installed
+    #  when: not installed_nodejs_info.failed
+    #  meta: end_host
+
+    - name: Get the version number of the latest Node.js LTS
+      uri:
+        url: "https://api.github.com/repos/nodejs/node/releases/latest"
+        method: GET
+        return_content: yes
+        status_code: 200
+        headers:
+          Content-Type: "application/json"
+        body_format: json
+      register: latest_nodejs_info
+
+    - name: Download latest Node.js
+      shell: "curl -L https://nodejs.org/dist/latest/node-{{ node_version_str }}-linux-x64.tar.gz | tar xz --transform 's/node-{{ node_version_str }}-linux-x64/node/'"
       args:
-        chdir: crawler-stuff
-        executable: /bin/bash
+        chdir: "{{ crawler_dir }}"
+        creates: "{{ crawler_dir }}/node/bin/node"
+        warn: false
+      vars:
+        node_version_str: "{{ latest_nodejs_info.json.tag_name }}"
+      # Once https://github.com/ansible/ansible/issues/64612 is fixed, we could
+      # use the 'unarchive' module, but the below doesn't yet use
+      # --strip-components=1 etc. like the 'shell' line above.
+      #unarchive:
+      #  src: "https://nodejs.org/dist/latest/node-{{ node_version_str }}-linux-x64.tar.gz"
+      #  remote_src: yes
+      #  dest: "{{ crawler_dir }}"
+      #  creates: "{{ crawler_dir }}/node-{{ node_version_str }}-linux-x64"
+      #vars:
+      #  node_version_str: "{{ latest_nodejs_info.json.tag_name }}"
 
-- name: Install node.js
+    - name: Create a symbolic link for nodejs
+      file:
+        src: "node"
+        dest: "{{ crawler_dir }}/node/bin/nodejs"
+        state: link
+        mode: "744"
+
+    # If installing using the apt package manager, we'd do something like the
+    # following.
+    #
+    #- name: Download NodeSource install script
+    #  get_url:
+    #    url: https://deb.nodesource.com/setup_{{ latest_node_lts_major_version_num }}.x
+    #    dest: "{{ crawler_dir }}/nodesource-setup-script.bash"
+    #    mode: "+x"
+    #  vars:
+    #    node_version_str: "{{ latest_nodejs_info.json.tag_name }}"
+    #    # LTS versions have even version numbers
+    #    latest_node_lts_major_version_num: "{{ round(int(latest_nodejs_info.json.tag_name[1:].split('.')[0]) / 2) * 2 }}"
+    #
+    #- name: Run NodeSource install script
+    #  become: yes
+    #  # Using recursive sudo here in addition to 'become: yes' for the -E flag.
+    #  shell: cat nodesource-setup-script.bash | sudo -E bash -
+    #  args:
+    #    chdir: "{{ crawler_dir }}"
+    #    executable: /bin/bash
+    #
+    #- name: Install Node.js
+    #  apt:
+    #    name: nodejs
+    #    state: latest
+
+
+- name: Ensure webdriver.io in installed
   hosts: all
-  become: yes
   gather_facts: no
   tasks:
-    - apt:
-        name: nodejs
-        state: latest
-
-- name: Install webdriver.io
-  hosts: all
-  gather_facts: no
-  tasks:
-    - npm:
+    - name: Install webdriver.io
+      npm:
         name: webdriverio
-        global: yes
+        global: no
+        # Install into 'node_modules' in our crawler directory:
+        path: "{{ crawler_dir }}"
+      environment:
+        # Do we actually need this to invoke our local 'npm'?
+        PATH: "{{ ansible_env.HOME }}/{{ crawler_dir }}/node/bin:{{ ansible_env.PATH }}"
+
 
 - name: Get geckodriver
   hosts: all
   gather_facts: no
   tasks:
+    # Maybe someday the github redirector[*] will allow redirecting to the
+    # latest assets even when they contain a version number in their name.
+    # For now, we need to get the version number manually and insert it into
+    # the URL for the .tar.gz that we want to download.
+    #
+    # * https://help.github.com/en/github/administering-a-repository/linking-to-releases
+    #
+    - name: Get latest geckodriver release tag
+      uri:
+        url: "https://api.github.com/repos/mozilla/geckodriver/releases/latest"
+        method: GET
+        return_content: yes
+        status_code: 200
+        headers:
+          Content-Type: "application/json"
+        body_format: json
+      register: geckodriver_info
+
     - name: Fetch and extract geckodriver
-      # Temporary method:
-      shell: curl -L https://github.com/mozilla/geckodriver/releases/download/v0.26.0/geckodriver-v0.26.0-linux64.tar.gz | tar xz
+      # Temporary method due to https://github.com/ansible/ansible/issues/64612
+      shell: curl -L https://github.com/mozilla/geckodriver/releases/latest/download/geckodriver-{{ geckodriver_info.json.tag_name }}-linux64.tar.gz | tar xz
       args:
-        chdir: crawler-stuff
+        chdir: "{{ crawler_dir }}"
         creates: geckodriver
         warn: false
-      # BUG: https://github.com/ansible/ansible/issues/64612
       #unarchive:
-      #  # TODO: Would be better to be able to fetch the version number.
-      #  src: https://github.com/mozilla/geckodriver/releases/download/v0.26.0/geckodriver-v0.26.0-linux64.tar.gz
-      #  dest: crawler-stuff
+      #  src: "https://github.com/mozilla/geckodriver/releases/latest/download/geckodriver-{{ geckodriver_info.json.tag_name }}-linux64.tar.gz"
       #  remote_src: yes
-      #  extra_opts:
-      #    - xz
+      #  dest: "{{ crawler_dir }}"
+      #  creates: "{{ crawler_dir }}/geckodriver"
 
-- name: Get the Alexa and Cisco top sites lists
+    - name: Allow localhost connections on port 4444
+      ufw:
+        rule: allow
+        from_ip: 127.0.0.1
+        from_port: "4444"
+        to_ip: 127.0.0.1
+        to_port: "4444"
+        proto: tcp
+      become: yes
+
+
+- name: Ensure the Alexa and Cisco top sites lists are present
   hosts: all
   gather_facts: no
   tasks:
@@ -120,54 +205,71 @@
       unarchive:
         src: https://s3.amazonaws.com/alexa-static/top-1m.csv.zip
         remote_src: yes
-        dest: crawler-stuff
-        creates: crawler-stuff/alexa-top-1m.csv # Kinda lying here
+        dest: "{{ crawler_dir }}"
+        # Kinda lying here:
+        creates: "{{ crawler_dir }}/alexa-top-1m.csv"
       register: alexa1Mstate
+
     - name: Rename top-1m.csv to alexa-top-1m.csv
       command: mv top-1m.csv alexa-top-1m.csv
       args:
-        chdir: crawler-stuff
+        chdir: "{{ crawler_dir }}"
       when: alexa1Mstate.changed
+
     - name: Create Alexa top 1k file
       shell: head -1000 alexa-top-1m.csv > alexa-top-1k.csv
       args:
-        chdir: crawler-stuff
+        chdir: "{{ crawler_dir }}"
       when: alexa1Mstate.changed
+
     - name: Get the Cisco top 1M list
       unarchive:
         src: https://s3-us-west-1.amazonaws.com/umbrella-static/top-1m.csv.zip
         remote_src: yes
-        dest: crawler-stuff
-        creates: crawler-stuff/alexa-top-1m.csv # Kinda lying here
+        dest: "{{ crawler_dir }}"
+        # Kinda lying here:
+        creates: "{{ crawler_dir }}/cisco-top-1m.csv"
       register: cisco1Mstate
+
     - name: Rename top-1m.csv to cisco-top-1m.csv
       command: mv top-1m.csv cisco-top-1m.csv
       args:
-        chdir: crawler-stuff
+        chdir: "{{ crawler_dir }}"
       when: cisco1Mstate.changed
+
     - name: Create Cisco top 1k file
       shell: head -1000 cisco-top-1m.csv > cisco-top-1k.csv
       args:
-        chdir: crawler-stuff
+        chdir: "{{ crawler_dir }}"
       when: cisco1Mstate.changed
 
-- name: Download Nightly Firefox
+
+- name: Ensure we have Nightly Firefox
   hosts: all
   gather_facts: no
   tasks:
-    # Temporary method:
-    - shell: curl -L https://ftp.mozilla.org/pub/firefox/nightly/latest-mozilla-central/firefox-72.0a1.en-US.linux-x86_64.tar.bz2 | tar jx
+    # We intall Firefox to get all the many lib dependencies (such as
+    # libgtk-3-0) which we need even if we don't run this version.
+    - name: Ensure Firefox is installed
+      apt:
+        name: firefox
+        state: latest
+      become: yes
+
+    - name: Download Nightly Firefox
+      # Temporary method due to https://github.com/ansible/ansible/issues/64612
+      # Note: must quote URL due to "&".
+      shell: curl -L "https://download.mozilla.org/?product=firefox-nightly-latest&os=linux64" | tar xj
       args:
-        chdir: crawler-stuff
+        chdir: "{{ crawler_dir }}"
         creates: firefox
         warn: false
-    # BUG: https://github.com/ansible/ansible/issues/64612
-    #- unarchive:
-    #    # Would be better to be able to extract the version number.
-    #    # https://bugzilla.mozilla.org/show_bug.cgi?id=1595045
-    #    src: https://ftp.mozilla.org/pub/firefox/nightly/latest-mozilla-central/firefox-72.0a1.en-US.linux-x86_64.tar.bz2
-    #    remote_src: yes
-    #    dest: crawler-stuff
-  # Then to use set:
+      #unarchive:
+      #  # Discussion about version number in links: https://bugzilla.mozilla.org/show_bug.cgi?id=1595045
+      #  src: https://download.mozilla.org/?product=firefox-nightly-latest&os=linux64
+      #  remote_src: yes
+      #  dest: "{{ crawler_dir }}"
+      #  creates: "{{ crawler_dir }}/firefox"
+  # Then to use, set:
   # export IFRAME_CRAWLER_FIREFOX_BIN="$PWD/firefox/firefox"
 
