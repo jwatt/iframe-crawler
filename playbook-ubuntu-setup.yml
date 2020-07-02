@@ -186,7 +186,7 @@
       become: yes
 
 
-- name: Ensure the Alexa and Cisco top sites lists are present
+- name: Ensure the Alexa, Cisco and Majestic top sites lists are present
   hosts: all
   gather_facts: no
   tasks:
@@ -195,7 +195,7 @@
         src: https://s3.amazonaws.com/alexa-static/top-1m.csv.zip
         remote_src: yes
         dest: "{{ crawler_dir }}"
-        # Kinda lying here:
+        # Kinda lying here (see rename in next step):
         creates: "{{ crawler_dir }}/alexa-top-1m.csv"
       register: alexa1Mstate
 
@@ -216,7 +216,7 @@
         src: https://s3-us-west-1.amazonaws.com/umbrella-static/top-1m.csv.zip
         remote_src: yes
         dest: "{{ crawler_dir }}"
-        # Kinda lying here:
+        # Kinda lying here (see rename in next step):
         creates: "{{ crawler_dir }}/cisco-top-1m.csv"
       register: cisco1Mstate
 
@@ -231,6 +231,20 @@
       args:
         chdir: "{{ crawler_dir }}"
       when: cisco1Mstate.changed
+
+    - name: Get the Majestic top 1M list
+      # majestic_million.csv.gz exists, but doesn't appear to play nicely with
+      # unarchive, so we download the non-compressed file here.
+      get_url:
+        url: https://downloads.majestic.com/majestic_million.csv
+        dest: "{{ crawler_dir }}/majestic-top-1m.csv"
+      register: majestic1Mstate
+
+    - name: Create Majestic top 1k file
+      shell: head -1000 majestic-top-1m.csv > majestic-top-1k.csv
+      args:
+        chdir: "{{ crawler_dir }}"
+      when: majestic1Mstate.changed
 
 
 - name: Ensure we have Nightly Firefox

@@ -74,16 +74,18 @@ Get geckodriver:
 curl -L https://github.com/mozilla/geckodriver/releases/download/v0.26.0/geckodriver-v0.26.0-linux64.tar.gz | tar xz
 ```
 
-Optionally, update the Alexa and/or Cisco top one million lists:
+Optionally, update the Alexa/Cisco/Majestic top one million lists:
 ```
 curl -L https://s3.amazonaws.com/alexa-static/top-1m.csv.zip | funzip > alexa-top-1m.csv
 curl -L https://s3-us-west-1.amazonaws.com/umbrella-static/top-1m.csv.zip | funzip > cisco-top-1m.csv
+curl -L http://downloads.majestic.com/majestic_million.csv > majestic-top-1m.csv
 ```
 
 Optionally, create reduced list:
 ```
 head -1000 alexa-top-1m.csv > alexa-top-1k.csv
 head -1000 cisco-top-1m.csv > cisco-top-1k.csv
+head -1000 majestic-top-1m.csv > majestic-top-1k.csv
 ```
 
 Optionally, get a specific version of firefox that you want geckodriver to use:
