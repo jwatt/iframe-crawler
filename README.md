@@ -2,9 +2,18 @@
 Introduction
 ============
 
-This is quick-and-dirty Web crawler used to crawl a given list of sites looking for pages that
-use iframes.  The list of sites is specified on the command line to the crawler script (see
-below).  The crawler is based on webdriver.io, which is a node.js app.
+This is a simple Web crawler that uses Firefox to crawl a list of sites and
+run a script (`gatherPageInfo` in `crawl-for-iframes.js`) in the context of the
+crawled sites' webpages to analyze the pages and gather information about them.
+
+Right now the crawler is fairly quick-and-dirty with everything contained in
+the single .js file `crawl-for-iframes.js`.  This script specifically looks for
+iframes and a bunch of related information since that's what I was interested
+in, but it could fairly easily be modified to gather other types of information.
+
+The list of sites to crawl is specified on the command line to the crawler
+script (see below).  The crawler is based on webdriver.io, which is a node.js
+app.
 
 Varies parts of the behavior are currently hardcoded in a `config` object at the top of the
 script.  For example, the crawler will only crawl pages linked from the main page of each
@@ -18,27 +27,28 @@ Additional limitations of note:
  - Only examines the top-level document's content (we could potentially examine
    subdocuments using `browser.switchToFrame(id)`).
 
-The output format is a list of URLs.  The URL of the page that is under examination is output
-first, and if any subdocument embedding elements with a valid URL are found their URLs are
-output next, all indented by two spaces.  URLs may optionally be prefixed by an additional
-"scheme". For example, "skipped:<URL>" indicates a page that was skipped due to some sort of
-error being encountered.
+The output format from `crawl-for-iframes.js` a list of URLs.  The URL of the
+page that is under examination is output first, and if any subdocument
+embedding elements with a valid URL are found their URLs are output next, all
+indented by two spaces.  URLs may optionally be prefixed by an additional
+"scheme". For example, "skipped:<URL>" indicates a page that was skipped due to
+some sort of error being encountered.
 
 
 Security concerns
 =================
 
 The crawler will be loading a lot of pages and adverts from lots of sites around
-the world. To avoid worrying about getting malware on non-throwaway machines
-it's probably best to run the crawler in the cloud. For example, I use an
-[Ubuntu 19.10 droplet on DigitalOcean](https://www.digitalocean.com/community/tutorials/initial-server-setup-with-ubuntu-18-04).
+the world. To avoid worrying about malware infections, consider running the
+crawler in the cloud (for example, on an
+[Ubuntu droplet on DigitalOcean](https://www.digitalocean.com/community/tutorials/initial-server-setup-with-ubuntu-20-04)).
 
 
 Ansible automated setup for Ubuntu targets
 ==========================================
 
-Install Ansible on your local machine using you package manager, or else see
-the more complete 
+Install Ansible on your local machine using you package manager (or for more
+detailed setup instructions see the
 [Ansible installation documentation](https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html).
 
 Then on the local machine simply run:
