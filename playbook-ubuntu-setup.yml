@@ -18,7 +18,7 @@
       loop:
         # DigitalOcean's apt needs an update first to find packages (aptitude)
         - apt update
-        - apt upgrade
+        - apt upgrade -y
         - apt install -y python3-apt aptitude
 
 
