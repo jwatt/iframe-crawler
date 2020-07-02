@@ -3,7 +3,9 @@
 - hosts: all
   tasks:
     - set_fact:
-        crawler_dir: iframe-crawler
+        # This must be an absolute path to use with 'unarchive', otherwise it
+        # will break in non-obvious ways.
+        crawler_dir: "{{ ansible_env.HOME }}/iframe-crawler"
 
 
 - name: Ensure ansible's 'apt' module can be used with this host
@@ -84,23 +86,16 @@
       register: latest_nodejs_info
 
     - name: Download latest Node.js
-      shell: "curl -L https://nodejs.org/dist/latest/node-{{ node_version_str }}-linux-x64.tar.gz | tar xz --transform 's/node-{{ node_version_str }}-linux-x64/node/'"
-      args:
-        chdir: "{{ crawler_dir }}"
-        creates: "{{ crawler_dir }}/node/bin/node"
-        warn: false
+      unarchive:
+        src: "https://nodejs.org/dist/latest/node-{{ node_version_str }}-linux-x64.tar.gz"
+        remote_src: yes
+        dest: "{{ crawler_dir }}"
+        extra_opts: 
+          - "--transform"
+          - "s/node-{{ node_version_str }}-linux-x64/node/"
+        creates: "{{ crawler_dir }}/node"
       vars:
         node_version_str: "{{ latest_nodejs_info.json.tag_name }}"
-      # Once https://github.com/ansible/ansible/issues/64612 is fixed, we could
-      # use the 'unarchive' module, but the below doesn't yet use
-      # --strip-components=1 etc. like the 'shell' line above.
-      #unarchive:
-      #  src: "https://nodejs.org/dist/latest/node-{{ node_version_str }}-linux-x64.tar.gz"
-      #  remote_src: yes
-      #  dest: "{{ crawler_dir }}"
-      #  creates: "{{ crawler_dir }}/node-{{ node_version_str }}-linux-x64"
-      #vars:
-      #  node_version_str: "{{ latest_nodejs_info.json.tag_name }}"
 
     - name: Create a symbolic link for nodejs
       file:
@@ -148,7 +143,7 @@
         path: "{{ crawler_dir }}"
       environment:
         # Do we actually need this to invoke our local 'npm'?
-        PATH: "{{ ansible_env.HOME }}/{{ crawler_dir }}/node/bin:{{ ansible_env.PATH }}"
+        PATH: "{{ crawler_dir }}/node/bin:{{ ansible_env.PATH }}"
 
 
 - name: Get geckodriver
@@ -174,17 +169,11 @@
       register: geckodriver_info
 
     - name: Fetch and extract geckodriver
-      # Temporary method due to https://github.com/ansible/ansible/issues/64612
-      shell: curl -L https://github.com/mozilla/geckodriver/releases/latest/download/geckodriver-{{ geckodriver_info.json.tag_name }}-linux64.tar.gz | tar xz
-      args:
-        chdir: "{{ crawler_dir }}"
-        creates: geckodriver
-        warn: false
-      #unarchive:
-      #  src: "https://github.com/mozilla/geckodriver/releases/latest/download/geckodriver-{{ geckodriver_info.json.tag_name }}-linux64.tar.gz"
-      #  remote_src: yes
-      #  dest: "{{ crawler_dir }}"
-      #  creates: "{{ crawler_dir }}/geckodriver"
+      unarchive:
+        src: "https://github.com/mozilla/geckodriver/releases/latest/download/geckodriver-{{ geckodriver_info.json.tag_name }}-linux64.tar.gz"
+        remote_src: yes
+        dest: "{{ crawler_dir }}"
+        creates: "{{ crawler_dir }}/geckodriver"
 
     - name: Allow localhost connections on port 4444
       ufw:
@@ -257,19 +246,12 @@
       become: yes
 
     - name: Download Nightly Firefox
-      # Temporary method due to https://github.com/ansible/ansible/issues/64612
-      # Note: must quote URL due to "&".
-      shell: curl -L "https://download.mozilla.org/?product=firefox-nightly-latest&os=linux64" | tar xj
-      args:
-        chdir: "{{ crawler_dir }}"
-        creates: firefox
-        warn: false
-      #unarchive:
-      #  # Discussion about version number in links: https://bugzilla.mozilla.org/show_bug.cgi?id=1595045
-      #  src: https://download.mozilla.org/?product=firefox-nightly-latest&os=linux64
-      #  remote_src: yes
-      #  dest: "{{ crawler_dir }}"
-      #  creates: "{{ crawler_dir }}/firefox"
+      unarchive:
+        # Discussion about version number in links: https://bugzilla.mozilla.org/show_bug.cgi?id=1595045
+        src: https://download.mozilla.org/?product=firefox-nightly-latest&os=linux64
+        remote_src: yes
+        dest: "{{ crawler_dir }}"
+        creates: "{{ crawler_dir }}/firefox"
   # Then to use, set:
   # export IFRAME_CRAWLER_FIREFOX_BIN="$PWD/firefox/firefox"
 
